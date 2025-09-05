@@ -39,19 +39,29 @@ function addHeader(b64Bytes: Uint8Array): Uint8Array {
 export function decodeSave(fileBytes: Uint8Array): string {
     const noHeader = removeHeader(fileBytes);
 
-    const b64String = String.fromCharCode(...noHeader);
+    // Convert the `noHeader` byte array into a Base64 string in chunks
+    let b64String = "";
+    const CHUNK_SIZE = 65536; // Process in chunks of 64 KB
+    for (let i = 0; i < noHeader.length; i += CHUNK_SIZE) {
+        b64String += String.fromCharCode(...noHeader.slice(i, i + CHUNK_SIZE));
+    }
 
+    // Base64 decode to encrypted bytes
     const encryptedWords = CryptoJS.enc.Base64.parse(b64String);
+
+    // Wrap in CipherParams
+    const cipherParams = CryptoJS.lib.CipherParams.create({
+        ciphertext: encryptedWords,
+    });
 
     // AES-ECB decrypt
     const key = CryptoJS.enc.Utf8.parse(AES_KEY_STRING);
-    const decrypted = CryptoJS.AES.decrypt(
-        { ciphertext: encryptedWords },
-        key,
-        { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 }
-    );
+    const decrypted = CryptoJS.AES.decrypt(cipherParams, key, {
+        mode: CryptoJS.mode.ECB,
+        padding: CryptoJS.pad.Pkcs7,
+    });
 
-    // Return as JSON string
+    // Return JSON as string
     return CryptoJS.enc.Utf8.stringify(decrypted);
 }
 
@@ -79,7 +89,7 @@ export function encodeSave(jsonString: string): Uint8Array {
 export function downloadFile(data: Uint8Array | string, filename: string) {
     const blob = typeof data === "string"
         ? new Blob([data], { type: "application/json" })
-        : new Blob([data], { type: "application/octet-stream" });
+        : new Blob([new Uint8Array(data)], { type: "application/octet-stream" })
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -92,4 +102,36 @@ export function downloadFile(data: Uint8Array | string, filename: string) {
 
 export function hashString(str: string): number {
     return str.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0);
+}
+
+// Search for a specific key anywhere in the nested object
+function deepSearch(obj: any, targetKey: string): boolean {
+    if (obj === null || typeof obj !== "object") return false;
+
+    if (targetKey in obj) return true;
+
+    for (const key in obj) {
+        if (deepSearch(obj[key], targetKey)) return true;
+    }
+
+    return false;
+}
+
+// Detect game type based on key existence in flattened or nested JSON
+export function detectGameType(jsonString: string): "Silksong" | "Classic" | "Unknown" | "Error" {
+    try {
+        const data = JSON.parse(jsonString);
+
+        // Updated detection rules for nested keys
+        if (deepSearch(data, "silkMax") || deepSearch(data, "gillyMet")) {
+            return "Silksong";
+        }
+        if (deepSearch(data, "shadeScene") || deepSearch(data, "killedHollowKnight")) {
+            return "Classic";
+        }
+    } catch {
+        return "Error";
+    }
+
+    return "Unknown";
 }

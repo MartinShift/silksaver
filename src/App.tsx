@@ -1,5 +1,6 @@
-import React, { useState, useEffect, ChangeEvent, DragEvent } from "react";
-import { decodeSave, encodeSave, downloadFile, hashString } from "./services/silksongSave";
+import { useState, useEffect } from "react";
+import type { ChangeEvent, DragEvent } from "react";
+import { decodeSave, encodeSave, downloadFile, hashString, detectGameType } from "./services/silksongSave";
 
 interface HistoryItem {
   name: string;
@@ -15,7 +16,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [decrypted, setDecrypted] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-
+  const [showToast, setShowToast] = useState(false);
   // Load history on mount
   useEffect(() => {
     const stored = localStorage.getItem("silksong-history");
@@ -23,9 +24,11 @@ export default function App() {
   }, []);
 
   const saveHistory = (item: HistoryItem) => {
-    const updated = [item, ...history.filter(h => h.hash !== item.hash)].slice(0, 10);
-    setHistory(updated);
-    localStorage.setItem("silksong-history", JSON.stringify(updated));
+    // Only exclude identical saves with the same hash
+    const updated = [item, ...history.filter(h => h.hash !== item.hash)];
+    const trimmedHistory = updated.slice(0, 10); // Limit to last 10
+    setHistory(trimmedHistory);
+    localStorage.setItem("silksong-history", JSON.stringify(trimmedHistory));
   };
 
   const handleFile = (file: File) => {
@@ -41,6 +44,15 @@ export default function App() {
     reader.readAsArrayBuffer(file);
   };
 
+    const handleCopyPath = () => {
+    const savePath = "%userprofile%\\appdata\\LocalLow\\Team Cherry\\Hollow Knight Silksong";
+    navigator.clipboard.writeText(savePath); // Copy path to clipboard
+
+    // Show the toast and hide it after 3 seconds
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
@@ -52,16 +64,21 @@ export default function App() {
     try {
       const json = decodeSave(fileData);
       const pretty = JSON.stringify(JSON.parse(json), null, 2);
+      const gameType = detectGameType(pretty); // Silksong vs Classic
+
+      // Create new history entry
+      saveHistory({
+        name: `${fileName} - ${gameType}`,
+        json: pretty,
+        hash: hashString(pretty), // Unique hash ensures backups with same name are tracked
+        date: new Date().toISOString() // Timestamp for sorting
+      });
+
       setJsonText(pretty);
       setDecrypted(true);
-      saveHistory({
-        name: fileName || "Unnamed Save",
-        json: pretty,
-        hash: hashString(pretty),
-        date: new Date().toISOString()
-      });
-    } catch {
+    } catch (e) {
       alert("Failed to decode file");
+      console.error(e);
     }
   };
 
@@ -75,17 +92,38 @@ export default function App() {
 
   const filteredJson = search
     ? jsonText
-        .split("\n")
-        .filter(line => line.toLowerCase().includes(search.toLowerCase()))
-        .join("\n")
+      .split("\n")
+      .filter(line => line.toLowerCase().includes(search.toLowerCase()))
+      .join("\n")
     : jsonText;
 
   return (
     <div className="min-h-screen flex justify-center items-start bg-[#0d1b2a] p-4">
-      <div className="w-full max-w-2xl bg-[#1b263b] rounded-lg shadow-lg p-6 mt-12 space-y-4">
+      <div className="w-full max-w-2xl bg-[#1b263b] rounded-lg shadow-lg p-5 mt-12 space-y-5">
         <h1 className="text-2xl font-bold text-white text-center">
           Silksong Save Editor
         </h1>
+        <h4 className="text-1xl font-bold text-white text-center">
+          works for regular hollow knight as well
+        </h4>
+         <div className="text-center text-sm">
+      <p className="font-bold text-white">
+        Save files are located at&nbsp;
+        <span
+          className="text-green-500 hover:underline cursor-pointer"
+          onClick={handleCopyPath}
+        >
+          %userprofile%\appdata\LocalLow\Team Cherry\Hollow Knight Silksong
+        </span>
+      </p>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded shadow-lg">
+          Path copied to clipboard!
+        </div>
+      )}
+    </div>
 
         {/* File Upload Box */}
         <div
