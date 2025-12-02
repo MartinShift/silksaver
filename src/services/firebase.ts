@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, increment, get, update } from "firebase/database";
+import { getFirestore, doc, updateDoc, getDoc, increment } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -7,12 +7,11 @@ const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getDatabase(app);
+export const db = getFirestore(app);
 
 function hasVisitedToday(): boolean {
   const lastVisit = localStorage.getItem("silksaver-last-visit");
@@ -32,7 +31,8 @@ function markVisitToday(): void {
 export async function incrementVisits() {
   try {
     if (!hasVisitedToday()) {
-      await update(ref(db, "silksaver-info-analytics"), {
+      const docRef = doc(db, "analytics", "silksaver-info-analytics");
+      await updateDoc(docRef, {
         visits: increment(1)
       });
       markVisitToday();
@@ -44,7 +44,8 @@ export async function incrementVisits() {
 
 export async function incrementEdits() {
   try {
-    await update(ref(db, "silksaver-info-analytics"), {
+    const docRef = doc(db, "analytics", "silksaver-info-analytics");
+    await updateDoc(docRef, {
       edits: increment(1)
     });
   } catch (e) {
@@ -54,8 +55,9 @@ export async function incrementEdits() {
 
 export async function getStats() {
   try {
-    const snapshot = await get(ref(db, "silksaver-info-analytics"));
-    return snapshot.val();
+    const docRef = doc(db, "analytics", "silksaver-info-analytics");
+    const snapshot = await getDoc(docRef);
+    return snapshot.data();
   } catch (e) {
     console.error("Failed to get stats", e);
     return null;
