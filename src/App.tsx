@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import { decodeSave, encodeSave, downloadFile, hashString, detectGameType } from "./services/silksongSave";
-
+import { incrementVisits, incrementEdits, getStats } from "./services/firebase";
 interface HistoryItem {
   name: string;
   json: string;
@@ -17,6 +17,7 @@ export default function App() {
   const [decrypted, setDecrypted] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showToast, setShowToast] = useState(false);
+  const [stats, setStats] = useState<{ visits: number; edits: number } | null>(null);
   // Load history on mount
   useEffect(() => {
     const stored = localStorage.getItem("silksong-history");
@@ -59,6 +60,13 @@ export default function App() {
   };
   const onDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
 
+  useEffect(() => {
+  incrementVisits();
+  
+  // Load stats
+  getStats().then(setStats);
+}, []);
+
   const decryptFile = () => {
     if (!fileData) return;
     try {
@@ -73,7 +81,6 @@ export default function App() {
         hash: hashString(pretty), // Unique hash ensures backups with same name are tracked
         date: new Date().toISOString() // Timestamp for sorting
       });
-
       setJsonText(pretty);
       setDecrypted(true);
     } catch (e) {
@@ -84,6 +91,8 @@ export default function App() {
 
   const saveEncrypted = () => {
     const encoded = encodeSave(jsonText);
+    incrementEdits();
+    getStats().then(setStats);
     downloadFile(encoded, fileName || "save.dat");
   };
 
